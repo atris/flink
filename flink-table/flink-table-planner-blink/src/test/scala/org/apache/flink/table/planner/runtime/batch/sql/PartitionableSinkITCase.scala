@@ -119,6 +119,12 @@ class PartitionableSinkITCase extends BatchTestBase {
   }
 
   @Test
+  def testInsertWithPartitionFoo(): Unit = {
+    registerTableSink()
+    tEnv.executeSql("insert into sinkTable select a, b, c from sortTable").await()
+  }
+
+  @Test
   def testInsertWithStaticPartitions(): Unit = {
     registerTableSink()
     tEnv.executeSql("insert into sinkTable partition(a=1) select b, c from sortTable").await()
@@ -208,7 +214,8 @@ class PartitionableSinkITCase extends BatchTestBase {
 
   private def registerTableSink(
       tableName: String = "sinkTable",
-      rowType: RowTypeInfo = type3,
+      //rowType: RowTypeInfo = type3,
+      rowType: RowTypeInfo = type6,
       grouping: Boolean = true,
       partitionColumns: Array[String] = Array[String]("a")): Unit = {
     PartitionableSinkITCase.registerTableSink(tEnv, tableName, rowType, grouping, partitionColumns)
@@ -316,7 +323,7 @@ object PartitionableSinkITCase {
     }
 
     val table = new CatalogTableImpl(
-      new TableSchema(Array("a", "b", "c"), rowType.getFieldTypes),
+      new TableSchema(Array("a", "b", "c", "d", "e", "f"), rowType.getFieldTypes),
       util.Arrays.asList[String](partitionColumns: _*),
       properties.asMap(),
       ""

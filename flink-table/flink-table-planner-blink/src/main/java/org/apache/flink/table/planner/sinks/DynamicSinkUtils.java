@@ -18,6 +18,8 @@
 
 package org.apache.flink.table.planner.sinks;
 
+import org.apache.calcite.tools.RelBuilder;
+
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.TableColumn;
 import org.apache.flink.table.api.TableColumn.MetadataColumn;
@@ -53,6 +55,7 @@ import org.apache.calcite.rex.RexNode;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -123,25 +126,45 @@ public final class DynamicSinkUtils {
 			RelNode query,
 			TableSchema sinkSchema,
 			@Nullable ObjectIdentifier sinkIdentifier,
-			FlinkTypeFactory typeFactory) {
+			FlinkTypeFactory typeFactory,
+			RelBuilder relBuilder) {
 		final RowType queryType = FlinkTypeFactory.toLogicalRowType(query.getRowType());
 		final List<RowField> queryFields = queryType.getFields();
 
 		final RowType sinkType = (RowType) fixSinkDataType(sinkSchema.toPersistedRowDataType()).getLogicalType();
 		final List<RowField> sinkFields = sinkType.getFields();
 
+		boolean requiresNullCasting = false;
+		int iterationSize = sinkFields.size();
 		if (queryFields.size() != sinkFields.size()) {
-			throw createSchemaMismatchException(
-				"Different number of columns.",
-				sinkIdentifier,
-				queryFields,
-				sinkFields);
+			if (queryFields.size() < sinkFields.size()) {
+				requiresNullCasting = true;
+				iterationSize = queryFields.size();
+			} else {
+				throw createSchemaMismatchException(
+					"Different number of columns.",
+					sinkIdentifier,
+					queryFields,
+					sinkFields);
+			}
 		}
 
+
+		List<RexNode> castNodes = new ArrayList<>();
+		RexBuilder rexBuilder = relBuilder.getRexBuilder();
+
 		boolean requiresCasting = false;
-		for (int i = 0; i < sinkFields.size(); i++) {
-			final LogicalType queryColumnType = queryFields.get(i).getType();
-			final LogicalType sinkColumnType = sinkFields.get(i).getType();
+		for (int i = 0; i < iterationSize; i++) {
+			final RowField queryColumn = queryFields.get(i);
+			final RowField sinkColumn = sinkFields.get(i);
+
+			final LogicalType queryColumnType = queryColumn.getType();
+			final LogicalType sinkColumnType = sinkColumn.getType();
+
+			if (!(queryColumn.getName().matches(sinkColumn.getName()))) {
+				//TODO: What should be constructed to get the columns to match? RexInputRef? Or reorder the columns in query?
+			}
+
 			if (!supportsImplicitCast(queryColumnType, sinkColumnType)) {
 				throw createSchemaMismatchException(
 					String.format(
@@ -157,11 +180,29 @@ public final class DynamicSinkUtils {
 			}
 		}
 
+		RelNode resultNode = query;
+
 		if (requiresCasting) {
 			final RelDataType castRelDataType = typeFactory.buildRelNodeRowType(sinkType);
-			return RelOptUtil.createCastRel(query, castRelDataType, true);
+			resultNode = RelOptUtil.createCastRel(query, castRelDataType, true);
 		}
-		return query;
+
+		if (requiresNullCasting) {
+
+			// Iterate over remaining columns and add null literals
+			for (int i = iterationSize; i < sinkFields.size(); i++) {
+				//TODO: How do I convert LogicalType to RelDataType?
+				final RelDataType nullCastRelDataType = typeFactory.buildRelNodeRowType(sinkFields.get(i).getType());
+				final RexNode rexNode = rexBuilder.makeNullLiteral(nullCastRelDataType);
+
+				castNodes.add(rexNode);
+			}
+		}
+
+		RelNode castNode = relBuilder.project(castNodes).build();
+		//TODO: How do I apply this project on top of result node?
+
+		return resultNode;
 	}
 
 	// --------------------------------------------------------------------------------------------
