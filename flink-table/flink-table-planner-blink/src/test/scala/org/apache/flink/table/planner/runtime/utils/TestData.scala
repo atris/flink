@@ -46,6 +46,7 @@ object TestData {
     LONG_TYPE_INFO)
   val type6 = new RowTypeInfo(INT_TYPE_INFO, DOUBLE_TYPE_INFO, STRING_TYPE_INFO, LOCAL_DATE,
     LOCAL_TIME, LOCAL_DATE_TIME)
+  val type7 = new RowTypeInfo(INT_TYPE_INFO, DOUBLE_TYPE_INFO, STRING_TYPE_INFO)
 
   val simpleType2 = new RowTypeInfo(INT_TYPE_INFO, DOUBLE_TYPE_INFO)
 

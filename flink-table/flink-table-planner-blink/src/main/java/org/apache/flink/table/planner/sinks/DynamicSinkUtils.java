@@ -96,7 +96,8 @@ public final class DynamicSinkUtils {
 			input,
 			schema,
 			sinkOperation.getTableIdentifier(),
-			typeFactory);
+			typeFactory,
+			relBuilder);
 		relBuilder.push(query);
 
 		// 3. convert the sink's table schema to the consumed data type of the sink
@@ -149,11 +150,8 @@ public final class DynamicSinkUtils {
 			}
 		}
 
-
-		List<RexNode> castNodes = new ArrayList<>();
-		RexBuilder rexBuilder = relBuilder.getRexBuilder();
-
 		boolean requiresCasting = false;
+
 		for (int i = 0; i < iterationSize; i++) {
 			final RowField queryColumn = queryFields.get(i);
 			final RowField sinkColumn = sinkFields.get(i);
@@ -162,7 +160,7 @@ public final class DynamicSinkUtils {
 			final LogicalType sinkColumnType = sinkColumn.getType();
 
 			if (!(queryColumn.getName().matches(sinkColumn.getName()))) {
-				//TODO: What should be constructed to get the columns to match? RexInputRef? Or reorder the columns in query?
+				query = reorderQueryAndSinkColumns(query, sinkSchema, relBuilder);
 			}
 
 			if (!supportsImplicitCast(queryColumnType, sinkColumnType)) {
@@ -182,27 +180,82 @@ public final class DynamicSinkUtils {
 
 		RelNode resultNode = query;
 
+		if (requiresNullCasting) {
+			resultNode = processNullCasts(resultNode, iterationSize,
+				queryFields, sinkFields, typeFactory, relBuilder);
+		}
+
 		if (requiresCasting) {
 			final RelDataType castRelDataType = typeFactory.buildRelNodeRowType(sinkType);
-			resultNode = RelOptUtil.createCastRel(query, castRelDataType, true);
+
+			resultNode = RelOptUtil.createCastRel(resultNode, castRelDataType, true);
 		}
-
-		if (requiresNullCasting) {
-
-			// Iterate over remaining columns and add null literals
-			for (int i = iterationSize; i < sinkFields.size(); i++) {
-				//TODO: How do I convert LogicalType to RelDataType?
-				final RelDataType nullCastRelDataType = typeFactory.buildRelNodeRowType(sinkFields.get(i).getType());
-				final RexNode rexNode = rexBuilder.makeNullLiteral(nullCastRelDataType);
-
-				castNodes.add(rexNode);
-			}
-		}
-
-		RelNode castNode = relBuilder.project(castNodes).build();
-		//TODO: How do I apply this project on top of result node?
 
 		return resultNode;
+	}
+
+	// --------------------------------------------------------------------------------------------
+
+	/**
+	 * Reorders query and sink columns to be aligned by their names
+	 */
+	private static RelNode reorderQueryAndSinkColumns(RelNode queryNode, TableSchema tableSchema, RelBuilder relBuilder) {
+
+		final List<String> fieldNames = tableSchema
+			.getTableColumns()
+			.stream()
+			.map(TableColumn::getName)
+			.collect(Collectors.toList());
+
+		final List<RexNode> fieldNodes = tableSchema
+			.getTableColumns()
+			.stream()
+			// QUESTION: Exception: java.lang.IndexOutOfBoundsException: position (0) must be less than the number of elements that remained (0)
+			.map(c -> relBuilder.field(c.getName()))
+			.collect(Collectors.toList());
+
+		relBuilder.push(queryNode);
+
+		relBuilder.projectNamed(fieldNodes, fieldNames, true);
+
+		return relBuilder.build();
+	}
+
+	/**
+	 * Add a cast consisting of the first N columns from the query and add null literals for the remaining attributes
+	 */
+	private static RelNode processNullCasts(RelNode inputNode, int startOffset, List<RowField> queryFields,
+											List<RowField> sinkFields, FlinkTypeFactory typeFactory, RelBuilder relBuilder) {
+		RexBuilder rexBuilder = relBuilder.getRexBuilder();
+
+		List<RexNode> castNodes = new ArrayList<>();
+
+		//QUESTION: Is this correct?
+		relBuilder.push(inputNode);
+
+		// QUESTION: To fill the first N columns of the cast, is this way correct?
+		for (int i = 0; i < startOffset; i++) {
+			RowField fieldValue = queryFields.get(i);
+			String fieldName = fieldValue.getName();
+
+			RexNode rexNode = relBuilder.field(fieldName);
+
+			castNodes.add(rexNode);
+		}
+
+		// Iterate over remaining columns and add null literals
+		for (int i = startOffset; i < sinkFields.size(); i++) {
+			LogicalType logicalType = sinkFields.get(i).getType();
+
+			final RelDataType nullCastRelDataType = typeFactory.createFieldTypeFromLogicalType(logicalType);
+			final RexNode rexNode = rexBuilder.makeNullLiteral(nullCastRelDataType);
+
+			castNodes.add(rexNode);
+		}
+
+		relBuilder.project(castNodes);
+
+		return relBuilder.build();
 	}
 
 	// --------------------------------------------------------------------------------------------

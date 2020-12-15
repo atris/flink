@@ -191,7 +191,7 @@ abstract class PlannerBase(
         val input = getRelBuilder.queryOperation(s.getChild).build()
         val sinkSchema = s.getSink.getTableSchema
         // validate query schema and sink schema, and apply cast if possible
-        val query = validateSchemaAndApplyImplicitCast(input, sinkSchema, null, getTypeFactory)
+        val query = validateSchemaAndApplyImplicitCast(input, sinkSchema, null, getTypeFactory, getRelBuilder)
         LogicalLegacySink.create(
           query,
           s.getSink,
@@ -204,7 +204,7 @@ abstract class PlannerBase(
         val sinkSchema = SelectTableSinkSchemaConverter.convertTimeAttributeToRegularTimestamp(
           SelectTableSinkSchemaConverter.changeDefaultConversionClass(s.getChild.getTableSchema))
         // validate query schema and sink schema, and apply cast if possible
-        val query = validateSchemaAndApplyImplicitCast(input, sinkSchema, null, getTypeFactory)
+        val query = validateSchemaAndApplyImplicitCast(input, sinkSchema, null, getTypeFactory, getRelBuilder)
         val sink = createSelectTableSink(sinkSchema)
         s.setSelectResultProvider(sink.getSelectResultProvider)
         LogicalLegacySink.create(
@@ -230,7 +230,8 @@ abstract class PlannerBase(
               input,
               TableSchemaUtils.getPhysicalSchema(table.getSchema),
               catalogSink.getTableIdentifier,
-              getTypeFactory)
+              getTypeFactory,
+              getRelBuilder)
             LogicalLegacySink.create(
               query,
               sink,
@@ -264,7 +265,8 @@ abstract class PlannerBase(
           input,
           sinkPhysicalSchema,
           null,
-          getTypeFactory)
+          getTypeFactory,
+          getRelBuilder)
         val tableSink = new DataStreamTableSink(
           FlinkTypeFactory.toTableSchema(query.getRowType),
           typeInfo,
