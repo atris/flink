@@ -129,8 +129,8 @@ public final class DynamicSinkUtils {
 			@Nullable ObjectIdentifier sinkIdentifier,
 			FlinkTypeFactory typeFactory,
 			RelBuilder relBuilder) {
-		final RowType queryType = FlinkTypeFactory.toLogicalRowType(query.getRowType());
-		final List<RowField> queryFields = queryType.getFields();
+		RowType queryType = FlinkTypeFactory.toLogicalRowType(query.getRowType());
+		List<RowField> queryFields = queryType.getFields();
 
 		final RowType sinkType = (RowType) fixSinkDataType(sinkSchema.toPersistedRowDataType()).getLogicalType();
 		final List<RowField> sinkFields = sinkType.getFields();
@@ -153,14 +153,20 @@ public final class DynamicSinkUtils {
 		boolean requiresCasting = false;
 
 		for (int i = 0; i < iterationSize; i++) {
-			final RowField queryColumn = queryFields.get(i);
+			RowField queryColumn = queryFields.get(i);
 			final RowField sinkColumn = sinkFields.get(i);
 
-			final LogicalType queryColumnType = queryColumn.getType();
+			LogicalType queryColumnType = queryColumn.getType();
 			final LogicalType sinkColumnType = sinkColumn.getType();
 
 			if (!(queryColumn.getName().matches(sinkColumn.getName()))) {
 				query = reorderQueryAndSinkColumns(query, sinkSchema, relBuilder);
+
+				queryType = FlinkTypeFactory.toLogicalRowType(query.getRowType());
+				queryFields = queryType.getFields();
+				queryColumn = queryFields.get(i);
+
+				queryColumnType = queryColumn.getType();
 			}
 
 			if (!supportsImplicitCast(queryColumnType, sinkColumnType)) {
@@ -214,7 +220,10 @@ public final class DynamicSinkUtils {
 			.map(c -> relBuilder.field(c.getName()))
 			.collect(Collectors.toList());
 
-		relBuilder.push(queryNode);
+		//1z1relBuilder.push(queryNode);
+
+
+		int i = 0;
 
 		relBuilder.projectNamed(fieldNodes, fieldNames, true);
 

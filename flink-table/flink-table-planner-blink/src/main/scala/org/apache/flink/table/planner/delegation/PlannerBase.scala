@@ -214,7 +214,10 @@ abstract class PlannerBase(
           ConnectorCatalogTable.sink(sink, !isStreamingMode))
 
       case catalogSink: CatalogSinkModifyOperation =>
-        val input = getRelBuilder.queryOperation(modifyOperation.getChild).build()
+        val relBuilder = getRelBuilder
+        //val input = getRelBuilder.queryOperation(modifyOperation.getChild).build()
+        val input = relBuilder.queryOperation(modifyOperation.getChild).build()
+        relBuilder.push(input)
         val identifier = catalogSink.getTableIdentifier
         val dynamicOptions = catalogSink.getDynamicOptions
         getTableSink(identifier, dynamicOptions).map {
@@ -231,7 +234,7 @@ abstract class PlannerBase(
               TableSchemaUtils.getPhysicalSchema(table.getSchema),
               catalogSink.getTableIdentifier,
               getTypeFactory,
-              getRelBuilder)
+              relBuilder)
             LogicalLegacySink.create(
               query,
               sink,

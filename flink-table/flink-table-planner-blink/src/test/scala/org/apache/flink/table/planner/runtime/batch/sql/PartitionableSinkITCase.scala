@@ -119,14 +119,14 @@ class PartitionableSinkITCase extends BatchTestBase {
   }
 
   @Test
-  def testInsertWithPartitionFoo(): Unit = {
-    registerTableSink()
-    tEnv.executeSql("insert into sinkTable select a, b, c from sortTable").await()
+  def testInsertWithPartitionFoo2(): Unit = {
+    registerTableSink(rowType = type7, tableSchema = Array("a", "b", "c"))
+    tEnv.executeSql("insert into sinkTable select b, a, c from sortTable").await()
   }
 
   @Test
-  def testInsertWithPartitionFoo2(): Unit = {
-    registerTableSink()
+  def testInsertWithPartitionFoo(): Unit = {
+    registerTableSink(rowType = type7, tableSchema = Array("a", "b", "c"))
     tEnv.executeSql("insert into sinkTable select b, a, c from sortTable").await()
   }
 
@@ -220,12 +220,11 @@ class PartitionableSinkITCase extends BatchTestBase {
 
   private def registerTableSink(
       tableName: String = "sinkTable",
-      //rowType: RowTypeInfo = type3,
-      //rowType: RowTypeInfo = type6,
-      rowType: RowTypeInfo = type7,
+      rowType: RowTypeInfo = type3,
       grouping: Boolean = true,
-      partitionColumns: Array[String] = Array[String]("a")): Unit = {
-    PartitionableSinkITCase.registerTableSink(tEnv, tableName, rowType, grouping, partitionColumns)
+      partitionColumns: Array[String] = Array[String]("a"),
+      tableSchema: Array[String] = Array("a", "b", "c")): Unit = {
+    PartitionableSinkITCase.registerTableSink(tEnv, tableName, rowType, grouping, partitionColumns, tableSchema)
   }
 }
 
@@ -320,7 +319,8 @@ object PartitionableSinkITCase {
       tableName: String,
       rowType: RowTypeInfo,
       grouping: Boolean,
-      partitionColumns: Array[String]): Unit = {
+      partitionColumns: Array[String],
+      tableSchema: Array[String] = Array("a", "b", "c")): Unit = {
     val properties = new DescriptorProperties()
     properties.putString("supports-grouping", grouping.toString)
     properties.putString(FileSystemOptions.SINK_SHUFFLE_BY_PARTITION.key(), "true")
@@ -330,8 +330,8 @@ object PartitionableSinkITCase {
     }
 
     val table = new CatalogTableImpl(
-      //new TableSchema(Array("a", "b", "c", "d", "e", "f"), rowType.getFieldTypes),
-      new TableSchema(Array("a", "b", "c"), rowType.getFieldTypes),
+      new TableSchema(tableSchema, rowType.getFieldTypes),
+      //new TableSchema(Array("a", "b", "c"), rowType.getFieldTypes),
       util.Arrays.asList[String](partitionColumns: _*),
       properties.asMap(),
       ""
