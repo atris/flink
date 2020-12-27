@@ -91,6 +91,8 @@ public final class DynamicSinkUtils {
 		// 1. prepare table sink
 		prepareDynamicSink(sinkOperation, sink, table);
 
+		relBuilder.push(input);
+
 		// 2. validate the query schema to the sink's table schema and apply cast if possible
 		final RelNode query = validateSchemaAndApplyImplicitCast(
 			input,
@@ -98,6 +100,9 @@ public final class DynamicSinkUtils {
 			sinkOperation.getTableIdentifier(),
 			typeFactory,
 			relBuilder);
+
+		relBuilder.clear();
+
 		relBuilder.push(query);
 
 		// 3. convert the sink's table schema to the consumed data type of the sink
